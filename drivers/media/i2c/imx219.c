@@ -544,6 +544,7 @@ struct imx219 {
 	u32 xclk_freq;
 
 	struct gpio_desc *reset_gpio;
+	struct gpio_desc *pwdn_gpio;
 	struct regulator_bulk_data supplies[IMX219_NUM_SUPPLIES];
 
 	struct v4l2_ctrl_handler ctrl_handler;
@@ -1150,6 +1151,8 @@ static int imx219_power_on(struct device *dev)
 	usleep_range(IMX219_XCLR_MIN_DELAY_US,
 		     IMX219_XCLR_MIN_DELAY_US + IMX219_XCLR_DELAY_RANGE_US);
 
+	gpiod_set_value_cansleep(imx219->pwdn_gpio, 1);
+
 	return 0;
 
 reg_off:
@@ -1167,6 +1170,8 @@ static int imx219_power_off(struct device *dev)
 	gpiod_set_value_cansleep(imx219->reset_gpio, 0);
 	regulator_bulk_disable(IMX219_NUM_SUPPLIES, imx219->supplies);
 	clk_disable_unprepare(imx219->xclk);
+
+	gpiod_set_value_cansleep(imx219->pwdn_gpio, 0);
 
 	return 0;
 }
@@ -1467,6 +1472,12 @@ static int imx219_probe(struct i2c_client *client)
 		dev_err(dev, "failed to get regulators\n");
 		return ret;
 	}
+
+	/* request optional power down pin */
+	imx219->pwdn_gpio = devm_gpiod_get_optional(dev, "powerdown",
+						    GPIOD_OUT_HIGH);
+	if (IS_ERR(imx219->pwdn_gpio))
+		return PTR_ERR(imx219->pwdn_gpio);
 
 	/* Request optional enable pin */
 	imx219->reset_gpio = devm_gpiod_get_optional(dev, "reset",
